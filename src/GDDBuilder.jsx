@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Plus, Trash2, Copy, Download, FileText, ArrowLeft, Check } from "lucide-react";
 import initialSections from "./schema.js";
 
@@ -44,9 +44,11 @@ const nextId = () => `c${Date.now()}_${uid++}`;
    MULTI-SELECT CHECKLIST — replaces the native <select multiple>
    ============================================================ */
 // options: [{ label, definition }]   selected: [label, ...]
-function OptionList({ options, selected, onToggle, onAdd }) {
+function OptionList({ options, selected, onToggle, onAdd, onEditDefinition }) {
   const [draft, setDraft] = useState("");
   const [draftDefinition, setDraftDefinition] = useState("");
+  const [hover, setHover] = useState(null); // { opt, style }
+  const hideTimeout = useRef(null);
 
   const submitDraft = () => {
     const val = draft.trim();
@@ -54,6 +56,36 @@ function OptionList({ options, selected, onToggle, onAdd }) {
     onAdd(val, draftDefinition.trim());
     setDraft("");
     setDraftDefinition("");
+  };
+
+  const showTooltip = (opt, e) => {
+    if (hideTimeout.current) {
+      clearTimeout(hideTimeout.current);
+      hideTimeout.current = null;
+    }
+    const isSelected = selected.includes(opt.label);
+    if (!opt.definition && !isSelected) return; // nothing to show and nothing to edit
+    const rect = e.currentTarget.getBoundingClientRect();
+    const width = 270;
+    const gap = 8;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 12));
+    const spaceAbove = rect.top;
+    const placeBelow = spaceAbove < 130; // not enough room above -> flip below
+    const style = placeBelow
+      ? { top: rect.bottom + gap }
+      : { bottom: window.innerHeight - rect.top + gap };
+    setHover({ opt, isSelected, left, style });
+  };
+
+  const scheduleHide = () => {
+    hideTimeout.current = setTimeout(() => setHover(null), 150);
+  };
+
+  const cancelHide = () => {
+    if (hideTimeout.current) {
+      clearTimeout(hideTimeout.current);
+      hideTimeout.current = null;
+    }
   };
 
   return (
@@ -71,9 +103,7 @@ function OptionList({ options, selected, onToggle, onAdd }) {
           return (
             <div
               key={opt.label}
-              className="gdd-opt-row"
               style={{
-                position: "relative",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
@@ -83,6 +113,8 @@ function OptionList({ options, selected, onToggle, onAdd }) {
                 cursor: "pointer",
               }}
               onClick={() => onToggle(opt.label)}
+              onMouseEnter={(e) => showTooltip(opt, e)}
+              onMouseLeave={scheduleHide}
             >
               <span
                 style={{
@@ -102,16 +134,59 @@ function OptionList({ options, selected, onToggle, onAdd }) {
               <span style={{ flex: 1, fontSize: 13.5, color: isSelected ? theme.ink : theme.inkMuted, lineHeight: 1.3 }}>
                 {opt.label}
               </span>
-
-              {opt.definition && (
-                <div className="gdd-tooltip">
-                  {opt.definition}
-                </div>
-              )}
             </div>
           );
         })}
       </div>
+
+      {hover && (
+        <div
+          style={{
+            position: "fixed",
+            left: hover.left,
+            ...hover.style,
+            width: 270,
+            maxWidth: "65vw",
+            background: theme.panelAlt,
+            color: theme.ink,
+            border: `1px solid ${theme.border}`,
+            padding: "9px 11px",
+            borderRadius: 7,
+            fontSize: 12,
+            lineHeight: 1.45,
+            boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
+            zIndex: 50,
+          }}
+          onMouseEnter={cancelHide}
+          onMouseLeave={scheduleHide}
+        >
+          {hover.opt.definition || <span style={{ color: theme.inkFaint, fontStyle: "italic" }}>No definition yet.</span>}
+          {hover.isSelected && (
+            <div style={{ marginTop: 8, textAlign: "right" }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  cancelHide();
+                  setHover(null);
+                  onEditDefinition(hover.opt.label);
+                }}
+                style={{
+                  background: theme.accentSoft,
+                  border: `1px solid ${theme.accentDim}`,
+                  color: theme.accent,
+                  borderRadius: 5,
+                  padding: "3px 9px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  fontFamily: theme.mono,
+                }}
+              >
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
         <input
@@ -174,7 +249,7 @@ function OptionList({ options, selected, onToggle, onAdd }) {
 /* ============================================================
    SUBSECTION BLOCK (H2 unit): checklist + free-text note
    ============================================================ */
-function Subsection({ sub, onToggle, onAdd, onNotes }) {
+function Subsection({ sub, onToggle, onAdd, onNotes, onEditDefinition }) {
   return (
     <div style={{ padding: "16px 18px", borderBottom: `1px solid ${theme.borderSoft}` }}>
       <h3
@@ -195,6 +270,7 @@ function Subsection({ sub, onToggle, onAdd, onNotes }) {
         selected={sub.selected}
         onToggle={(opt) => onToggle(sub.id, opt)}
         onAdd={(val, definition) => onAdd(sub.id, val, definition)}
+        onEditDefinition={(label) => onEditDefinition(sub.id, label)}
       />
       <textarea
         value={sub.notes}
@@ -264,6 +340,72 @@ function CharacterCard({ char, index, fields, onChange, onRemove }) {
 }
 
 /* ============================================================
+   DEFINITION EDIT MODAL — opened from a selected option's
+   hover popup via the "Edit" button.
+   ============================================================ */
+function DefinitionModal({ label, value, onChange, onSave, onCancel }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10,12,16,0.6)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+        padding: 20,
+      }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          background: theme.panel,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 10,
+          padding: 20,
+          width: 420,
+          maxWidth: "100%",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{ fontFamily: theme.serif, fontSize: 19, color: theme.ink, marginBottom: 12, fontWeight: 500 }}>
+          {label}
+        </h3>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={5}
+          autoFocus
+          placeholder="Write a definition…"
+          style={{
+            width: "100%",
+            background: theme.panelAlt,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 6,
+            padding: "9px 11px",
+            fontSize: 13.5,
+            color: theme.ink,
+            outline: "none",
+            resize: "vertical",
+            fontFamily: theme.sans,
+          }}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button onClick={onCancel} style={btnGhost}>
+            Cancel
+          </button>
+          <button onClick={onSave} style={btnAccent}>
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    TOP-LEVEL SECTION CONTAINER (H1 unit)
    ============================================================ */
 function SectionContainer({ section, index, children }) {
@@ -300,7 +442,11 @@ function generateMarkdown(sections) {
     } else {
       section.subsections.forEach((sub) => {
         lines.push(`## ${sub.label}`, "");
-        sub.selected.forEach((opt) => lines.push(`- ${opt}`));
+        sub.selected.forEach((label) => {
+          const opt = sub.options.find((o) => o.label === label);
+          const def = opt && opt.definition ? opt.definition.trim() : "";
+          lines.push(def ? `- ${label} : ${def}` : `- ${label}`);
+        });
         if (sub.notes.trim()) {
           if (sub.selected.length) lines.push("");
           lines.push(sub.notes.trim());
@@ -319,6 +465,7 @@ export default function GDDBuilder() {
   const [sections, setSections] = useState(() => withRuntimeState(initialSections));
   const [doc, setDoc] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [editModal, setEditModal] = useState(null); // { sectionId, subId, label, value }
 
   const updateSub = (sectionId, subId, patch) => {
     setSections((prev) =>
@@ -343,6 +490,25 @@ export default function GDDBuilder() {
     );
 
   const setNotes = (sectionId, subId, val) => updateSub(sectionId, subId, () => ({ notes: val }));
+
+  const updateOptionDefinition = (sectionId, subId, label, newDefinition) =>
+    updateSub(sectionId, subId, (sub) => ({
+      options: sub.options.map((o) => (o.label === label ? { ...o, definition: newDefinition } : o)),
+    }));
+
+  const openEditModal = (sectionId, subId, label) => {
+    const section = sections.find((s) => s.id === sectionId);
+    const sub = section.subsections.find((su) => su.id === subId);
+    const opt = sub.options.find((o) => o.label === label);
+    setEditModal({ sectionId, subId, label, value: opt ? opt.definition : "" });
+  };
+
+  const closeEditModal = () => setEditModal(null);
+
+  const saveEditModal = () => {
+    updateOptionDefinition(editModal.sectionId, editModal.subId, editModal.label, editModal.value.trim());
+    setEditModal(null);
+  };
 
   const addCharacter = (sectionId) =>
     setSections((prev) =>
@@ -427,30 +593,6 @@ export default function GDDBuilder() {
   /* ---------- EDITOR VIEW ---------- */
   return (
     <div style={{ minHeight: "100%", background: theme.bg, fontFamily: theme.sans, padding: "32px 16px 90px" }}>
-      <style>{`
-        .gdd-tooltip {
-          position: absolute;
-          left: 30px;
-          bottom: 100%;
-          transform: translateY(-6px);
-          background: ${theme.panelAlt};
-          color: ${theme.ink};
-          border: 1px solid ${theme.border};
-          padding: 9px 11px;
-          border-radius: 7px;
-          font-size: 12px;
-          line-height: 1.45;
-          width: 270px;
-          max-width: 65vw;
-          box-shadow: 0 10px 26px rgba(0,0,0,0.45);
-          opacity: 0;
-          visibility: hidden;
-          transition: opacity .12s ease;
-          z-index: 50;
-          pointer-events: none;
-        }
-        .gdd-opt-row:hover .gdd-tooltip { opacity: 1; visibility: visible; }
-      `}</style>
       <div style={{ maxWidth: 820, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <FileText size={20} color={theme.accent} />
@@ -460,7 +602,7 @@ export default function GDDBuilder() {
           Game Design Document
         </h1>
         <p style={{ fontSize: 13, color: theme.inkFaint, marginTop: -20, marginBottom: 28 }}>
-          Hover any option with a definition (like World Structure) to see what it means.
+          Hover any option to see its definition. Select it to reveal an Edit button.
         </p>
 
         {sections.map((section, i) => (
@@ -489,6 +631,7 @@ export default function GDDBuilder() {
                   onToggle={(subId, opt) => toggleOption(section.id, subId, opt)}
                   onAdd={(subId, val, definition) => addOption(section.id, subId, val, definition)}
                   onNotes={(subId, val) => setNotes(section.id, subId, val)}
+                  onEditDefinition={(subId, label) => openEditModal(section.id, subId, label)}
                 />
               ))
             )}
@@ -499,6 +642,16 @@ export default function GDDBuilder() {
           <FileText size={16} /> Generate Document
         </button>
       </div>
+
+      {editModal && (
+        <DefinitionModal
+          label={editModal.label}
+          value={editModal.value}
+          onChange={(val) => setEditModal((prev) => ({ ...prev, value: val }))}
+          onSave={saveEditModal}
+          onCancel={closeEditModal}
+        />
+      )}
     </div>
   );
 }
