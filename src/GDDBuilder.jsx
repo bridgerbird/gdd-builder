@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Plus, Trash2, Copy, Download, FileText, ArrowLeft, Check, Upload, Save } from "lucide-react";
+import { Plus, Trash2, Copy, Download, FileText, ArrowLeft, Check, Upload, Save, Info } from "lucide-react";
 import initialSections from "./schema.js";
 
 /* ============================================================
@@ -47,8 +47,7 @@ const nextId = () => `c${Date.now()}_${uid++}`;
 function OptionList({ options, selected, onToggle, onAdd, onEditDefinition }) {
   const [draft, setDraft] = useState("");
   const [draftDefinition, setDraftDefinition] = useState("");
-  const [hover, setHover] = useState(null); // { opt, style }
-  const hideTimeout = useRef(null);
+  const [expandedLabel, setExpandedLabel] = useState(null);
 
   const submitDraft = () => {
     const val = draft.trim();
@@ -58,40 +57,10 @@ function OptionList({ options, selected, onToggle, onAdd, onEditDefinition }) {
     setDraftDefinition("");
   };
 
-  const showTooltip = (opt, e) => {
-    if (hideTimeout.current) {
-      clearTimeout(hideTimeout.current);
-      hideTimeout.current = null;
-    }
-    const isSelected = selected.includes(opt.label);
-    if (!opt.definition && !isSelected) return; // nothing to show and nothing to edit
-    const rect = e.currentTarget.getBoundingClientRect();
-    const width = 270;
-    const gap = 8;
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 12));
-    const spaceAbove = rect.top;
-    const placeBelow = spaceAbove < 130; // not enough room above -> flip below
-    const style = placeBelow
-      ? { top: rect.bottom + gap }
-      : { bottom: window.innerHeight - rect.top + gap };
-    setHover({ opt, isSelected, left, style });
-  };
-
-  const scheduleHide = () => {
-    hideTimeout.current = setTimeout(() => setHover(null), 250);
-  };
-
-  const cancelHide = () => {
-    if (hideTimeout.current) {
-      clearTimeout(hideTimeout.current);
-      hideTimeout.current = null;
-    }
-  };
-
   return (
     <div>
       <div
-        style={{ border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.bg, maxHeight: 230, overflowY: "auto" }}
+        style={{ border: `1px solid ${theme.border}`, borderRadius: 8, background: theme.bg, maxHeight: 280, overflowY: "auto" }}
       >
         {options.length === 0 && (
           <div style={{ padding: "14px 12px", color: theme.inkFaint, fontSize: 13, fontFamily: theme.mono }}>
@@ -100,93 +69,102 @@ function OptionList({ options, selected, onToggle, onAdd, onEditDefinition }) {
         )}
         {options.map((opt) => {
           const isSelected = selected.includes(opt.label);
+          const hasContent = !!opt.definition || isSelected;
+          const isExpanded = expandedLabel === opt.label;
           return (
-            <div
-              key={opt.label}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 10px",
-                borderBottom: `1px solid ${theme.borderSoft}`,
-                background: isSelected ? theme.selectSoft : "transparent",
-                cursor: "pointer",
-              }}
-              onClick={() => onToggle(opt.label)}
-              onMouseEnter={(e) => showTooltip(opt, e)}
-              onMouseLeave={scheduleHide}
-            >
-              <span
+            <div key={opt.label}>
+              <div
                 style={{
-                  flexShrink: 0,
-                  width: 16,
-                  height: 16,
-                  borderRadius: 4,
-                  border: `1px solid ${isSelected ? theme.select : theme.inkFaint}`,
-                  background: isSelected ? theme.select : "transparent",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
+                  gap: 10,
+                  padding: "8px 10px",
+                  borderBottom: isExpanded ? "none" : `1px solid ${theme.borderSoft}`,
+                  background: isSelected ? theme.selectSoft : "transparent",
+                  cursor: "pointer",
                 }}
+                onClick={() => onToggle(opt.label)}
               >
-                {isSelected && <Check size={11} color={theme.bg} strokeWidth={3} />}
-              </span>
-              <span style={{ flex: 1, fontSize: 13.5, color: isSelected ? theme.ink : theme.inkMuted, lineHeight: 1.3 }}>
-                {opt.label}
-              </span>
+                <span
+                  style={{
+                    flexShrink: 0,
+                    width: 16,
+                    height: 16,
+                    borderRadius: 4,
+                    border: `1px solid ${isSelected ? theme.select : theme.inkFaint}`,
+                    background: isSelected ? theme.select : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {isSelected && <Check size={11} color={theme.bg} strokeWidth={3} />}
+                </span>
+                <span style={{ flex: 1, fontSize: 13.5, color: isSelected ? theme.ink : theme.inkMuted, lineHeight: 1.3 }}>
+                  {opt.label}
+                </span>
+                {hasContent && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedLabel(isExpanded ? null : opt.label);
+                    }}
+                    title={isExpanded ? "Hide definition" : "Show definition"}
+                    style={{
+                      flexShrink: 0,
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 2,
+                      display: "flex",
+                      color: isExpanded ? theme.accent : theme.inkFaint,
+                    }}
+                  >
+                    <Info size={14} />
+                  </button>
+                )}
+              </div>
+              {isExpanded && (
+                <div
+                  style={{
+                    padding: "4px 14px 12px 40px",
+                    background: theme.panelAlt,
+                    borderBottom: `1px solid ${theme.borderSoft}`,
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: theme.ink,
+                  }}
+                >
+                  {opt.definition || <span style={{ color: theme.inkFaint, fontStyle: "italic" }}>No definition yet.</span>}
+                  {isSelected && (
+                    <div style={{ marginTop: 8, textAlign: "right" }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedLabel(null);
+                          onEditDefinition(opt.label);
+                        }}
+                        style={{
+                          background: theme.accentSoft,
+                          border: `1px solid ${theme.accentDim}`,
+                          color: theme.accent,
+                          borderRadius: 5,
+                          padding: "3px 9px",
+                          fontSize: 11,
+                          cursor: "pointer",
+                          fontFamily: theme.mono,
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-
-      {hover && (
-        <div
-          style={{
-            position: "fixed",
-            left: hover.left,
-            ...hover.style,
-            width: 270,
-            maxWidth: "65vw",
-            background: theme.panelAlt,
-            color: theme.ink,
-            border: `1px solid ${theme.border}`,
-            padding: "9px 11px",
-            borderRadius: 7,
-            fontSize: 12,
-            lineHeight: 1.45,
-            boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
-            zIndex: 50,
-          }}
-          onMouseEnter={cancelHide}
-          onMouseLeave={scheduleHide}
-        >
-          {hover.opt.definition || <span style={{ color: theme.inkFaint, fontStyle: "italic" }}>No definition yet.</span>}
-          {hover.isSelected && (
-            <div style={{ marginTop: 8, textAlign: "right" }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  cancelHide();
-                  setHover(null);
-                  onEditDefinition(hover.opt.label);
-                }}
-                style={{
-                  background: theme.accentSoft,
-                  border: `1px solid ${theme.accentDim}`,
-                  color: theme.accent,
-                  borderRadius: 5,
-                  padding: "3px 9px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                  fontFamily: theme.mono,
-                }}
-              >
-                Edit
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
         <input
@@ -341,7 +319,7 @@ function CharacterCard({ char, index, fields, onChange, onRemove }) {
 
 /* ============================================================
    DEFINITION EDIT MODAL — opened from a selected option's
-   hover popup via the "Edit" button.
+   expanded definition panel via the "Edit" button.
    ============================================================ */
 function DefinitionModal({ label, value, onChange, onSave, onCancel }) {
   return (
@@ -704,7 +682,8 @@ export default function GDDBuilder() {
           <p style={{ fontSize: 13, color: theme.select, marginBottom: 12 }}>Project imported successfully.</p>
         )}
         <p style={{ fontSize: 13, color: theme.inkFaint, marginBottom: 28 }}>
-          Hover any option to see its definition. Select it to reveal an Edit button. Use "Save Project" to export your
+          Click the (i) icon next to an option to see its definition. Select it first to reveal an Edit button there
+          too. Use "Save Project" to export your
           work as a file you can "Import" again later to keep editing.
         </p>
 
