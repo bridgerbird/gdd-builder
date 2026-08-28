@@ -2,21 +2,17 @@
 
 ## Core Mechanics
 
-- Jump
-- Block/Parry
-- Dodge/Evade
-- TEST
+- Jump : Mr. Jumpman Mario
+- Isa me, jar jar : Isa crazy!
 
-I like cheese when I jump.
+Jump like Mario, clumsy controls like Jar Jar. Isa crazy!
 
 ## Secondary Mechanics
 
-- Skill Tree/Talent System
-- Companion/Pet System
+- Achievement/Trophy System : Tracking optional milestones or challenges that exist outside the main progression path.
 
 ## Mechanic Interactions
 
-- Fire + Oil = Spreading Flame
 - Ice + Fire = Melt
 
 ## Rules and Constraints
@@ -45,22 +41,20 @@ I like cheese when I jump.
 
 - **Name:** Joe
 - **Role/Archetype:** Barley Salesman
-- **Personality:** Jovial and Gitty (likes to make code references)
+- **Personality:** Jovial and Gitty (likes to make coding references)
 - **Stat System:** Health, Attack, Defense
 
 # Level/World Design Overview
 
 ## World Structure
 
-- Semi-Open / Zone-Based
+- Hub-and-Spoke : A central hub area connects to multiple discrete levels or zones that the player enters and exits individually.
 
 ## Level Flow
 
-- Branching Flow
 
 ## Environmental Storytelling
 
-- Graffiti / Notes
 
 ## Landmarks and Navigation
 

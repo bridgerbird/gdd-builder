@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Plus, Trash2, Copy, Download, FileText, ArrowLeft, Check } from "lucide-react";
+import { Plus, Trash2, Copy, Download, FileText, ArrowLeft, Check, Upload, Save } from "lucide-react";
 import initialSections from "./schema.js";
 
 /* ============================================================
@@ -78,7 +78,7 @@ function OptionList({ options, selected, onToggle, onAdd, onEditDefinition }) {
   };
 
   const scheduleHide = () => {
-    hideTimeout.current = setTimeout(() => setHover(null), 150);
+    hideTimeout.current = setTimeout(() => setHover(null), 250);
   };
 
   const cancelHide = () => {
@@ -466,6 +466,9 @@ export default function GDDBuilder() {
   const [doc, setDoc] = useState(null);
   const [copied, setCopied] = useState(false);
   const [editModal, setEditModal] = useState(null); // { sectionId, subId, label, value }
+  const [importError, setImportError] = useState(null);
+  const [importedNotice, setImportedNotice] = useState(false);
+  const fileInputRef = useRef(null);
 
   const updateSub = (sectionId, subId, patch) => {
     setSections((prev) =>
@@ -549,6 +552,82 @@ export default function GDDBuilder() {
     URL.revokeObjectURL(url);
   };
 
+  /* ---------- PROJECT EXPORT / IMPORT ----------
+     Exports the full editable state (selections, custom-added
+     options, edited definitions, notes, characters) as JSON —
+     not the generated markdown, which is lossy. Importing this
+     file fully re-populates the editor, so the same project can
+     be picked back up in a later session. */
+  const handleExportProject = () => {
+    const payload = { type: "gdd-builder-project", version: 1, exportedAt: new Date().toISOString(), sections };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "gdd-builder-project.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportClick = () => {
+    setImportError(null);
+    fileInputRef.current?.click();
+  };
+
+  // Re-hydrates against the current schema so the file stays usable even if
+  // sections/subsections were added or renamed in schema.js since the export.
+  const reconcileImportedSections = (imported) => {
+    const freshBase = withRuntimeState(initialSections);
+    const importedById = new Map(imported.filter((s) => s && s.id).map((s) => [s.id, s]));
+    return freshBase.map((freshSection) => {
+      const importedSection = importedById.get(freshSection.id);
+      if (!importedSection) return freshSection;
+      if (freshSection.isCharacterSection) {
+        return {
+          ...freshSection,
+          characters: Array.isArray(importedSection.characters) ? importedSection.characters : freshSection.characters,
+        };
+      }
+      const importedSubsById = new Map((importedSection.subsections || []).filter((su) => su && su.id).map((su) => [su.id, su]));
+      return {
+        ...freshSection,
+        subsections: freshSection.subsections.map((freshSub) => {
+          const importedSub = importedSubsById.get(freshSub.id);
+          if (!importedSub) return freshSub;
+          return {
+            ...freshSub,
+            options: Array.isArray(importedSub.options) ? importedSub.options : freshSub.options,
+            selected: Array.isArray(importedSub.selected) ? importedSub.selected : freshSub.selected,
+            notes: typeof importedSub.notes === "string" ? importedSub.notes : freshSub.notes,
+          };
+        }),
+      };
+    });
+  };
+
+  const handleImportFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const importedSections = Array.isArray(parsed) ? parsed : parsed.sections;
+        if (!Array.isArray(importedSections)) throw new Error("Missing sections array");
+        setSections(reconcileImportedSections(importedSections));
+        setImportError(null);
+        setImportedNotice(true);
+        setTimeout(() => setImportedNotice(false), 2500);
+      } catch (err) {
+        setImportError("Couldn't read that file — make sure it's a GDD Builder project export (.json).");
+      }
+    };
+    reader.onerror = () => setImportError("Couldn't read that file.");
+    reader.readAsText(file);
+  };
+
   /* ---------- DOCUMENT PREVIEW VIEW ---------- */
   if (doc !== null) {
     return (
@@ -594,15 +673,39 @@ export default function GDDBuilder() {
   return (
     <div style={{ minHeight: "100%", background: theme.bg, fontFamily: theme.sans, padding: "32px 16px 90px" }}>
       <div style={{ maxWidth: 820, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <FileText size={20} color={theme.accent} />
-          <span style={{ fontFamily: theme.mono, fontSize: 11.5, color: theme.inkFaint, letterSpacing: "0.1em" }}>GDD BUILDER</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <FileText size={20} color={theme.accent} />
+            <span style={{ fontFamily: theme.mono, fontSize: 11.5, color: theme.inkFaint, letterSpacing: "0.1em" }}>GDD BUILDER</span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={handleImportFile}
+              style={{ display: "none" }}
+            />
+            <button onClick={handleImportClick} style={btnGhost}>
+              <Upload size={14} /> Import
+            </button>
+            <button onClick={handleExportProject} style={btnGhost}>
+              <Save size={14} /> Save Project
+            </button>
+          </div>
         </div>
-        <h1 style={{ fontFamily: theme.serif, fontSize: 34, color: theme.ink, marginBottom: 28, fontWeight: 500 }}>
+        <h1 style={{ fontFamily: theme.serif, fontSize: 34, color: theme.ink, marginBottom: 10, fontWeight: 500 }}>
           Game Design Document
         </h1>
-        <p style={{ fontSize: 13, color: theme.inkFaint, marginTop: -20, marginBottom: 28 }}>
-          Hover any option to see its definition. Select it to reveal an Edit button.
+        {importError && (
+          <p style={{ fontSize: 13, color: theme.danger, marginBottom: 12 }}>{importError}</p>
+        )}
+        {importedNotice && (
+          <p style={{ fontSize: 13, color: theme.select, marginBottom: 12 }}>Project imported successfully.</p>
+        )}
+        <p style={{ fontSize: 13, color: theme.inkFaint, marginBottom: 28 }}>
+          Hover any option to see its definition. Select it to reveal an Edit button. Use "Save Project" to export your
+          work as a file you can "Import" again later to keep editing.
         </p>
 
         {sections.map((section, i) => (
